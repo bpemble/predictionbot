@@ -18,6 +18,7 @@ log = get_logger(__name__)
 
 _scan_lock = threading.Lock()
 _outcome_lock = threading.Lock()
+_monitor_lock = threading.Lock()
 
 _scheduler: BackgroundScheduler | None = None
 
@@ -43,6 +44,21 @@ def job_scan_and_trade():
         log.error(f"scan_and_trade job error: {exc}", exc_info=True)
     finally:
         _scan_lock.release()
+
+
+def job_monitor_positions():
+    if not _monitor_lock.acquire(blocking=False):
+        log.debug("monitor_positions already running, skipping.")
+        return
+    try:
+        from core.position_monitor import monitor_and_exit
+        stats = monitor_and_exit()
+        if stats["exited"] > 0:
+            log.info(f"=== Position monitor: exited {stats['exited']} positions ===")
+    except Exception as exc:
+        log.error(f"monitor_positions job error: {exc}", exc_info=True)
+    finally:
+        _monitor_lock.release()
 
 
 def job_check_outcomes():
@@ -126,6 +142,13 @@ def build_scheduler() -> BackgroundScheduler:
         "interval",
         seconds=constants.SCAN_INTERVAL_SECONDS,
         id="scan_and_trade",
+        replace_existing=True,
+    )
+    _scheduler.add_job(
+        job_monitor_positions,
+        "interval",
+        seconds=constants.POSITION_MONITOR_INTERVAL_SECONDS,
+        id="monitor_positions",
         replace_existing=True,
     )
     _scheduler.add_job(

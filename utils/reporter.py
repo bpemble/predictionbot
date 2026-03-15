@@ -1,14 +1,8 @@
 """
-Position reporter: computes and displays open position analytics.
+Position reporter: open position analytics + closed P&L dashboard.
 
-Metrics per position:
-  - Entry price / current price / our probability
-  - Unrealized P&L (mark-to-market at current price)
-  - Expected P&L (at our probability, assuming we're right)
-  - Expected return %
-  - IRR (annualized expected return given days to resolution)
-  - Sharpe contribution (edge / σ per position)
-  - Information ratio (our edge as a multiple of market uncertainty)
+--report  shows open positions with expected P&L, IRR, Sharpe
+--pnl     shows closed trade history, win rate, Brier score, realized P&L
 """
 from __future__ import annotations
 
@@ -46,7 +40,7 @@ def _get_evaluation(evaluation_id: Optional[int]) -> Optional[dict]:
         return None
 
 
-def build_position_report(top_n: int = 5) -> list[dict]:
+def build_position_report(top_n: Optional[int] = None) -> list[dict]:
     """
     Build analytics for the top N open positions by expected P&L.
     Returns a list of position dicts sorted by expected_pnl descending.
@@ -134,10 +128,10 @@ def build_position_report(top_n: int = 5) -> list[dict]:
         key=lambda x: (x["expected_pnl"] or 0, x["unrealized_pnl"]),
         reverse=True,
     )
-    return positions[:top_n]
+    return positions if top_n is None else positions[:top_n]
 
 
-def print_position_report(top_n: int = 5) -> None:
+def print_position_report(top_n: Optional[int] = None) -> None:
     positions = build_position_report(top_n)
 
     if not positions:
@@ -146,7 +140,7 @@ def print_position_report(top_n: int = 5) -> None:
 
     mode = "PAPER" if positions[0]["paper"] else "LIVE"
     print(f"\n{'='*80}")
-    print(f"  OPEN POSITIONS — TOP {len(positions)} by Expected P&L  [{mode} MODE]")
+    print(f"  OPEN POSITIONS — {len(positions)} total, sorted by Expected P&L  [{mode} MODE]")
     print(f"{'='*80}")
 
     for i, p in enumerate(positions, 1):
@@ -188,7 +182,7 @@ def print_position_report(top_n: int = 5) -> None:
     total_expected = sum(p["expected_pnl"] or 0 for p in positions)
 
     print(f"\n{'─'*80}")
-    print(f"  PORTFOLIO SUMMARY (top {len(positions)} positions)")
+    print(f"  PORTFOLIO SUMMARY ({len(positions)} positions)")
     print(f"  Total deployed   : ${total_cost:.2f}")
     print(f"  Current value    : ${total_current:.2f}   "
           f"Unrealized P&L: {'+' if total_unrealized >= 0 else ''}${total_unrealized:.2f}")
@@ -196,3 +190,151 @@ def print_position_report(top_n: int = 5) -> None:
           f"({'+' if total_expected/total_cost*100 >= 0 else ''}"
           f"{total_expected/total_cost*100:.1f}% on deployed capital)")
     print(f"{'='*80}\n")
+
+
+# ── P&L dashboard ─────────────────────────────────────────────────────────────
+
+def _get_closed_trades() -> list[dict]:
+    """Fetch all closed/exited trades with their market titles."""
+    rows = _get_conn().execute(
+        """
+        SELECT t.*, m.title, m.outcome, m.category
+        FROM trades t
+        LEFT JOIN markets m ON t.market_id = m.id
+        WHERE t.status IN ('closed', 'exited')
+        ORDER BY t.closed_at DESC
+        """
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def _get_signal_weights() -> list[dict]:
+    rows = _get_conn().execute(
+        "SELECT * FROM signal_weights ORDER BY weight DESC"
+    ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def print_pnl_report() -> None:
+    """
+    Full P&L dashboard: closed trade history, win rate, Brier score,
+    realized P&L, and signal weight calibration status.
+    """
+    closed = _get_closed_trades()
+    open_trades = get_open_trades()
+
+    mode = "PAPER" if _is_paper_mode() else "LIVE"
+    print(f"\n{'='*80}")
+    print(f"  P&L DASHBOARD  [{mode} MODE]")
+    print(f"{'='*80}")
+
+    # ── Open positions summary ────────────────────────────────────────────────
+    open_exposure = sum(t["cost_usd"] for t in open_trades)
+    print(f"\n  OPEN POSITIONS: {len(open_trades)}  (${open_exposure:.2f} deployed)")
+    print(f"  Run  --report  for full open position analytics.\n")
+
+    # ── Closed trades ─────────────────────────────────────────────────────────
+    if not closed:
+        print("  No closed trades yet.")
+        print(f"\n{'='*80}\n")
+        return
+
+    resolved = [t for t in closed if t["status"] == "closed"]   # market resolved
+    exited   = [t for t in closed if t["status"] == "exited"]   # early exit
+
+    print(f"  CLOSED TRADES: {len(closed)} total  "
+          f"({len(resolved)} resolved · {len(exited)} early exits)\n")
+
+    print(f"  {'#':>3}  {'Market':<42} {'Side':4} {'Entry':6} "
+          f"{'Exit':6} {'Cost':7} {'P&L':8} {'Ret%':7} {'Type'}")
+    print(f"  {'─'*3}  {'─'*42} {'─'*4} {'─'*6} {'─'*6} {'─'*7} {'─'*8} {'─'*7} {'─'*10}")
+
+    for i, t in enumerate(closed[:30], 1):   # cap display at 30 rows
+        title   = (t["title"] or "Unknown")[:41]
+        side    = (t["side"] or "?").upper()
+        cost    = t["cost_usd"] or 0
+        pnl     = t["pnl_usd"] or 0
+        ret_pct = (pnl / cost * 100) if cost > 0 else 0
+        pnl_str = f"{'+' if pnl >= 0 else ''}${pnl:.2f}"
+        ret_str = f"{'+' if ret_pct >= 0 else ''}{ret_pct:.1f}%"
+
+        # Entry price and exit price
+        entry = t["price"] or 0
+        # Exit price: back-calculate from pnl and shares
+        shares = t["shares"] or 0
+        if shares > 0 and cost > 0:
+            exit_price = (cost + pnl) / shares
+        else:
+            exit_price = 0
+
+        trade_type = "resolved" if t["status"] == "closed" else "early-exit"
+        outcome_marker = ""
+        if t["status"] == "closed" and t["outcome"]:
+            won = (t["side"] == t["outcome"])
+            outcome_marker = " ✓" if won else " ✗"
+
+        print(f"  {i:>3}  {title:<42} {side:4} {entry:6.3f} "
+              f"{exit_price:6.3f} ${cost:6.2f} {pnl_str:>8} {ret_str:>7} "
+              f"{trade_type}{outcome_marker}")
+
+    if len(closed) > 30:
+        print(f"  ... and {len(closed) - 30} more trades")
+
+    # ── Aggregate stats ───────────────────────────────────────────────────────
+    total_cost    = sum(t["cost_usd"] or 0 for t in closed)
+    total_pnl     = sum(t["pnl_usd"] or 0 for t in closed)
+    total_ret_pct = (total_pnl / total_cost * 100) if total_cost > 0 else 0
+
+    winners = [t for t in closed if (t["pnl_usd"] or 0) > 0]
+    losers  = [t for t in closed if (t["pnl_usd"] or 0) < 0]
+    win_rate = len(winners) / len(closed) * 100 if closed else 0
+
+    avg_win  = sum(t["pnl_usd"] for t in winners) / len(winners) if winners else 0
+    avg_loss = sum(t["pnl_usd"] for t in losers)  / len(losers)  if losers  else 0
+    profit_factor = abs(avg_win / avg_loss) if avg_loss != 0 else float("inf")
+
+    brier_trades = [t for t in resolved if t["brier_contribution"] is not None]
+    avg_brier = (sum(t["brier_contribution"] for t in brier_trades) / len(brier_trades)
+                 if brier_trades else None)
+
+    print(f"\n  {'─'*78}")
+    print(f"  REALIZED P&L SUMMARY")
+    print(f"  Total wagered    : ${total_cost:.2f}")
+    print(f"  Total realized   : {'+' if total_pnl >= 0 else ''}${total_pnl:.2f}  "
+          f"({'+' if total_ret_pct >= 0 else ''}{total_ret_pct:.1f}% on deployed capital)")
+    print(f"  Win rate         : {win_rate:.1f}%  "
+          f"({len(winners)} wins · {len(losers)} losses · "
+          f"{len(closed) - len(winners) - len(losers)} scratch)")
+    print(f"  Avg win / loss   : +${avg_win:.2f} / -${abs(avg_loss):.2f}  "
+          f"(profit factor: {profit_factor:.2f}x)")
+
+    if avg_brier is not None:
+        # Brier score: 0 = perfect, 0.25 = random (50/50), lower = better
+        calibration = "excellent" if avg_brier < 0.10 else \
+                      "good"      if avg_brier < 0.18 else \
+                      "fair"      if avg_brier < 0.22 else "poor"
+        print(f"  Avg Brier score  : {avg_brier:.4f}  [{calibration}]  "
+              f"(0=perfect · 0.25=random · {len(brier_trades)} resolved trades)")
+    else:
+        print(f"  Avg Brier score  : n/a  (need resolved trades for calibration)")
+
+    # ── Signal weight status ──────────────────────────────────────────────────
+    weights = _get_signal_weights()
+    if weights:
+        print(f"\n  SIGNAL WEIGHTS  (self-calibrating via Brier score)")
+        for w in weights:
+            bar_len = int(w["weight"] * 100)
+            bar = "█" * bar_len + "░" * (30 - bar_len)
+            brier_str = f"brier={w['avg_brier_score']:.4f}" if w.get("avg_brier_score") else "not yet calibrated"
+            n = w.get("n_resolved", 0)
+            print(f"  {w['signal_source']:<12} {w['weight']:.3f}  {bar}  {brier_str}  n={n}")
+
+    print(f"\n{'='*80}\n")
+
+
+def _is_paper_mode() -> bool:
+    try:
+        from config.settings import get_settings
+        return get_settings().paper_trade
+    except Exception:
+        return True

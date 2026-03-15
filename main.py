@@ -33,6 +33,8 @@ def main():
                         help="Run one scan cycle and exit (for testing)")
     parser.add_argument("--report", action="store_true",
                         help="Print top 5 open position analytics and exit")
+    parser.add_argument("--pnl", action="store_true",
+                        help="Print full P&L dashboard (closed trades, win rate, Brier) and exit")
     args = parser.parse_args()
 
     settings = get_settings()
@@ -46,11 +48,17 @@ def main():
     log.info(f"Kalshi:     {'enabled' if settings.kalshi_enabled() else 'disabled (no key)'}")
     log.info("=" * 60)
 
-    # ── Report mode ───────────────────────────────────────────────────────────
+    # ── Report modes ──────────────────────────────────────────────────────────
     if args.report:
         init_db(settings.db_path)
         from utils.reporter import print_position_report
-        print_position_report(top_n=5)
+        print_position_report(top_n=None)
+        return
+
+    if args.pnl:
+        init_db(settings.db_path)
+        from utils.reporter import print_pnl_report
+        print_pnl_report()
         return
 
     # ── One-time setup ────────────────────────────────────────────────────────
@@ -69,6 +77,9 @@ def main():
     if not settings.anthropic_api_key:
         log.error("ANTHROPIC_API_KEY not set — LLM signal will be unavailable. Set it in .env.")
         sys.exit(1)
+
+    if not settings.tavily_api_key:
+        log.warning("TAVILY_API_KEY not set — news context for LLM signal will be degraded.")
 
     # ── Init database ─────────────────────────────────────────────────────────
     init_db(settings.db_path)

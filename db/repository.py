@@ -165,7 +165,9 @@ def get_open_trades(platform: Optional[str] = None) -> list[dict]:
             "SELECT * FROM trades WHERE status='open' AND platform=?", (platform,)
         ).fetchall()
     else:
-        rows = _get_conn().execute("SELECT * FROM trades WHERE status='open'").fetchall()
+        rows = _get_conn().execute(
+            "SELECT * FROM trades WHERE status='open'"
+        ).fetchall()
     return [dict(r) for r in rows]
 
 
@@ -177,6 +179,19 @@ def close_trade(trade_id: int, pnl_usd: float, brier: float) -> None:
             (_now(), pnl_usd, brier, trade_id),
         )
         _get_conn().commit()
+
+
+def close_trade_early(trade_id: int, pnl_usd: float, exit_reason: str) -> None:
+    """Close a position before market resolution (edge realized, low IRR, signal flip).
+    No Brier score because the market hasn't resolved — outcome is unknown."""
+    with _lock:
+        _get_conn().execute(
+            """UPDATE trades SET status='exited', closed_at=?, pnl_usd=?,
+               brier_contribution=NULL WHERE id=?""",
+            (_now(), pnl_usd, trade_id),
+        )
+        _get_conn().commit()
+    log.debug(f"Trade {trade_id} exited early: {exit_reason} pnl=${pnl_usd:+.2f}")
 
 
 def get_open_exposure_usd(platform: str, paper: bool) -> float:

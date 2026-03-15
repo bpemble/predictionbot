@@ -41,9 +41,9 @@ EMA_ALPHA: float = 0.20             # EMA speed for signal weight updates
 BRIER_WINDOW: int = 50              # rolling window of resolved trades for Brier
 
 # ─── Scheduling (seconds) ─────────────────────────────────────────────────────
-SCAN_INTERVAL_SECONDS: int = 3600       # 1 hour — info asymmetry, not latency
-REEVAL_INTERVAL_SECONDS: int = 3600     # 1 hour
-OUTCOME_CHECK_INTERVAL_SECONDS: int = 14_400  # 4 hours
+SCAN_INTERVAL_SECONDS: int = 3600           # 1 hour — info asymmetry, not latency
+POSITION_MONITOR_INTERVAL_SECONDS: int = 1800  # 30 min — exit management
+OUTCOME_CHECK_INTERVAL_SECONDS: int = 14_400   # 4 hours
 CALIBRATE_HOUR_UTC: int = 2             # 02:00 UTC daily
 SNAPSHOT_HOUR_UTC: int = 0              # 00:05 UTC daily
 HEALTH_CHECK_INTERVAL_SECONDS: int = 300  # 5 min

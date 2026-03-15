@@ -100,9 +100,8 @@ def process_market(
     kelly_pct = None
 
     if agg.abs_edge >= constants.MIN_EDGE:
-        from config.settings import get_settings as _gs
         from risk.kelly import kelly_stake
-        bankroll = _gs().bankroll(market.platform)
+        bankroll = get_settings().bankroll(market.platform)
         raw_stake = kelly_stake(agg.aggregated_prob, agg.market_implied_prob, agg.side, bankroll)
         kelly_pct = round(raw_stake / bankroll, 4) if bankroll > 0 else 0
         decision = f"trade_{agg.side}"

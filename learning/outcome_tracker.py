@@ -84,7 +84,6 @@ def _get_aggregated_prob(evaluation_id: int | None) -> float | None:
     if evaluation_id is None:
         return None
     try:
-        import sqlite3
         from db.repository import _get_conn
         row = _get_conn().execute(
             "SELECT aggregated_prob FROM evaluations WHERE id=?", (evaluation_id,)
