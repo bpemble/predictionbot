@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     # ── News & Research ───────────────────────────────────────────────────────
     tavily_api_key: Optional[str] = None
     exa_api_key: Optional[str] = None
+    perplexity_api_key: Optional[str] = None
 
     # ── Capital ───────────────────────────────────────────────────────────────
     bankroll_poly_usd: float = 5000.0

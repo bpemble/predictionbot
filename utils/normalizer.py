@@ -3,6 +3,7 @@ Maps heterogeneous platform market schemas to the internal MarketSchema.
 """
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Optional
@@ -55,11 +56,29 @@ class MarketSchema:
 def normalize_polymarket(raw: dict) -> Optional[MarketSchema]:
     """Convert a Gamma API market dict to MarketSchema."""
     try:
+        # Gamma bulk API returns outcomePrices as ["yes_price_str", "no_price_str"]
+        # and token IDs in clobTokenIds. The `tokens` field is only populated on
+        # individual market fetches and is null in bulk responses.
         tokens = raw.get("tokens") or []
         yes_token = next((t for t in tokens if t.get("outcome", "").upper() == "YES"), None)
         no_token = next((t for t in tokens if t.get("outcome", "").upper() == "NO"), None)
-        yes_price = float(yes_token.get("price", 0.5)) if yes_token else 0.5
-        no_price = float(no_token.get("price", 0.5)) if no_token else 1.0 - yes_price
+
+        if yes_token:
+            yes_price = float(yes_token.get("price", 0.5))
+            no_price = float(no_token.get("price", 1.0 - yes_price)) if no_token else 1.0 - yes_price
+            yes_token_id = yes_token.get("token_id")
+            no_token_id = no_token.get("token_id") if no_token else None
+        else:
+            # Primary path for bulk API responses
+            # outcomePrices arrives as a JSON-encoded string: '["0.03", "0.97"]'
+            raw_op = raw.get("outcomePrices") or []
+            outcome_prices = json.loads(raw_op) if isinstance(raw_op, str) else raw_op
+            raw_ids = raw.get("clobTokenIds") or []
+            clob_ids = json.loads(raw_ids) if isinstance(raw_ids, str) else raw_ids
+            yes_price = float(outcome_prices[0]) if len(outcome_prices) >= 1 else 0.5
+            no_price = float(outcome_prices[1]) if len(outcome_prices) >= 2 else 1.0 - yes_price
+            yes_token_id = clob_ids[0] if len(clob_ids) >= 1 else None
+            no_token_id = clob_ids[1] if len(clob_ids) >= 2 else None
 
         return MarketSchema(
             id=raw["conditionId"],
@@ -72,8 +91,8 @@ def normalize_polymarket(raw: dict) -> Optional[MarketSchema]:
             liquidity_usd=float(raw.get("liquidity", 0) or 0),
             volume_usd=float(raw.get("volume", 0) or 0),
             status="open" if raw.get("active") and not raw.get("closed") else "closed",
-            yes_token_id=yes_token.get("token_id") if yes_token else None,
-            no_token_id=no_token.get("token_id") if no_token else None,
+            yes_token_id=yes_token_id,
+            no_token_id=no_token_id,
         )
     except Exception:
         return None
