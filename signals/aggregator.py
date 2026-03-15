@@ -79,9 +79,32 @@ def aggregate(
 
     logit_agg = logit_numerator / weight_sum
 
-    # Step 3: Bayesian shrinkage toward market price
+    # Step 3: Bayesian shrinkage toward market price.
+    #
+    # For a latency/speed strategy you'd shrink heavily — the market price
+    # is usually right and you're just trying to be faster.
+    #
+    # For an info-asymmetry strategy, shrinkage should SCALE with conviction:
+    #   - Low confidence signals → shrink heavily toward market (crowd knows more)
+    #   - High confidence signals (e.g. resolution criteria alpha) → trust our model
+    #
+    # Special case: if a resolution_analyzer or cross_market signal fired with
+    # high confidence, reduce shrinkage significantly — those signals represent
+    # genuine structural mispricings, not just noisy forecasts.
     avg_confidence = sum(s.confidence for s in valid) / len(valid)
-    shrinkage = 1.0 - (0.4 * (1.0 - avg_confidence))
+
+    high_conviction_sources = {"resolution", "cross_market"}
+    max_conviction_signal = max(
+        (s.confidence for s in valid if s.source in high_conviction_sources),
+        default=0.0,
+    )
+
+    # Base shrinkage: 0.6–1.0 (higher = trust our model more)
+    # Boosted by high-conviction structural signals
+    base_shrinkage = 0.6 + (0.35 * avg_confidence)
+    conviction_boost = max_conviction_signal * 0.25
+    shrinkage = min(0.97, base_shrinkage + conviction_boost)
+
     logit_market = _logit(market_price)
     logit_final = shrinkage * logit_agg + (1 - shrinkage) * logit_market
 
@@ -97,7 +120,7 @@ def aggregate(
 
     log.info(
         f"Aggregated: p={aggregated_prob:.3f} market={market_price:.3f} "
-        f"edge={edge:+.3f} side={side} signals={len(valid)}"
+        f"edge={edge:+.3f} side={side} signals={len(valid)} shrinkage={shrinkage:.2f}"
     )
 
     return AggregationResult(

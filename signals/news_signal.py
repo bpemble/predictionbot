@@ -41,12 +41,8 @@ def run(market: MarketSchema) -> SignalResult:
     texts = []
     article_count = 0
 
-    if _news.available():
-        articles = _news.search(market.title, days_back=3, max_articles=8)
-        for a in articles:
-            texts.append(f"{a['title']} {a['description']}")
-        article_count += len(articles)
-
+    # NewsAPI calls are reserved for the LLM signal (which has richer context).
+    # This signal uses Exa only to avoid double-counting the daily API quota.
     if _exa.available():
         exa_results = _exa.search(market.title, num_results=4, days_back=5)
         for r in exa_results:

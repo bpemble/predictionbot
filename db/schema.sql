@@ -92,11 +92,13 @@ CREATE TABLE IF NOT EXISTS signal_weights (
 
 INSERT OR IGNORE INTO signal_weights (signal_source, weight, updated_at)
 VALUES
-    ('llm',        0.30, datetime('now')),
-    ('news',       0.15, datetime('now')),
-    ('research',   0.25, datetime('now')),
-    ('metaculus',  0.20, datetime('now')),
-    ('gdelt',      0.10, datetime('now'));
+    ('llm',         0.25, datetime('now')),
+    ('resolution',  0.30, datetime('now')),  -- highest: structural info asymmetry
+    ('cross_market',0.20, datetime('now')),  -- high: logical consistency arb
+    ('research',    0.12, datetime('now')),
+    ('news',        0.07, datetime('now')),
+    ('metaculus',   0.04, datetime('now')),
+    ('gdelt',       0.02, datetime('now'));
 
 -- ─────────────────────────────────────────────────────────────────────────────
 -- BANKROLL SNAPSHOTS

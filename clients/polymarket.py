@@ -119,6 +119,27 @@ class PolymarketClient:
         return normalize_polymarket(resp.json())
 
     @with_retry()
+    def get_resolution_criteria(self, condition_id: str) -> str:
+        """
+        Fetch the full resolution criteria / description for a market.
+        This is the primary source of information-asymmetry alpha:
+        ambiguous criteria, edge cases, or unexpected resolution paths.
+        """
+        resp = requests.get(f"{GAMMA_BASE}/markets/{condition_id}", timeout=30)
+        if resp.status_code == 404:
+            return ""
+        resp.raise_for_status()
+        raw = resp.json()
+        parts = []
+        if raw.get("description"):
+            parts.append(raw["description"])
+        if raw.get("resolutionSource"):
+            parts.append(f"Resolution source: {raw['resolutionSource']}")
+        if raw.get("outcomes"):
+            parts.append(f"Outcomes: {raw['outcomes']}")
+        return "\n\n".join(parts)
+
+    @with_retry()
     def place_market_order(
         self, token_id: str, side: str, amount_usd: float
     ) -> Optional[str]:

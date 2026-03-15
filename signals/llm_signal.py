@@ -7,6 +7,7 @@ from __future__ import annotations
 from clients.claude_llm import ClaudeLLMClient
 from clients.exa import ExaClient
 from clients.newsapi import NewsAPIClient
+from clients.polymarket import PolymarketClient
 from signals.base import SignalResult
 from utils.logging import get_logger
 from utils.normalizer import MarketSchema
@@ -16,15 +17,23 @@ log = get_logger(__name__)
 _llm = ClaudeLLMClient()
 _news = NewsAPIClient()
 _exa = ExaClient()
+_poly = PolymarketClient()
 
 
 def run(market: MarketSchema, deep: bool = False) -> SignalResult:
     """Generate an LLM-based probability estimate for the market."""
-    # 1. Gather context
     context_parts = []
 
+    # 1a. Fetch resolution criteria — critical for info-asymmetry edge
+    resolution_criteria = ""
+    if market.platform == "polymarket" and market.id:
+        try:
+            resolution_criteria = _poly.get_resolution_criteria(market.id)
+        except Exception:
+            pass
+
     if _news.available():
-        articles = _news.search(market.title, days_back=5, max_articles=6)
+        articles = _news.search(market.title, days_back=5, max_articles=4)
         if articles:
             context_parts.append("**Recent News:**\n" + _news.format_for_context(articles))
 
@@ -35,10 +44,10 @@ def run(market: MarketSchema, deep: bool = False) -> SignalResult:
 
     context = "\n\n".join(context_parts) if context_parts else ""
 
-    # 2. Ask Claude
+    # 2. Ask Claude — now with full resolution criteria
     result = _llm.estimate_probability(
         question=market.title,
-        description="",
+        description=resolution_criteria,
         resolution_date=market.resolution_date,
         market_price=market.yes_price,
         context=context,

@@ -15,11 +15,20 @@ MIN_SIGNAL_CONFIDENCE: float = 0.20 # discard signals below this self-reported c
 
 # ─── Market filtering ─────────────────────────────────────────────────────────
 MIN_LIQUIDITY_USD: float = 5_000    # skip markets with less available liquidity
-MIN_VOLUME_USD: float = 2_000       # skip markets with low total volume
-MIN_HOURS_TO_CLOSE: float = 4       # skip markets closing in < 4 hours
-MAX_DAYS_TO_CLOSE: float = 60       # skip markets closing > 60 days out
-PRICE_FLOOR: float = 0.04           # skip if yes_price < 4 % (too near zero)
-PRICE_CEIL: float = 0.96            # skip if yes_price > 96 % (too near one)
+MIN_VOLUME_USD: float = 5_000       # skip markets with low total volume
+MIN_HOURS_TO_CLOSE: float = 12      # skip markets closing in < 12 hours (need time for edge to play)
+MAX_DAYS_TO_CLOSE: float = 45       # skip markets closing > 45 days out
+PRICE_FLOOR: float = 0.05           # skip if yes_price < 5 %
+PRICE_CEIL: float = 0.95            # skip if yes_price > 95 %
+MAX_MARKETS_PER_SCAN: int = 15      # fewer markets, much deeper analysis
+
+# Info-asymmetry market efficiency filter:
+# Avoid the most liquid markets — they are priced by sophisticated players.
+# The sweet spot is mid-tier volume where crowd wisdom is incomplete.
+MAX_VOLUME_USD_EFFICIENCY: float = 800_000  # skip hyper-liquid markets above this
+# Prefer markets where price is NOT near extremes (those are usually "known" outcomes)
+ALPHA_PRICE_FLOOR: float = 0.10     # extra scoring preference for markets above this
+ALPHA_PRICE_CEIL: float = 0.90      # extra scoring preference for markets below this
 
 # ─── Signal aggregation ──────────────────────────────────────────────────────
 # Bayesian shrinkage toward market price.
@@ -32,7 +41,7 @@ EMA_ALPHA: float = 0.20             # EMA speed for signal weight updates
 BRIER_WINDOW: int = 50              # rolling window of resolved trades for Brier
 
 # ─── Scheduling (seconds) ─────────────────────────────────────────────────────
-SCAN_INTERVAL_SECONDS: int = 900        # 15 min
+SCAN_INTERVAL_SECONDS: int = 3600       # 1 hour — info asymmetry, not latency
 REEVAL_INTERVAL_SECONDS: int = 3600     # 1 hour
 OUTCOME_CHECK_INTERVAL_SECONDS: int = 14_400  # 4 hours
 CALIBRATE_HOUR_UTC: int = 2             # 02:00 UTC daily

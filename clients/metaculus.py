@@ -16,7 +16,7 @@ BASE = "https://www.metaculus.com/api2"
 
 
 class MetaculusClient:
-    @with_retry()
+    @with_retry(max_retries=1, backoff_max=5.0)
     def search_questions(self, query: str, limit: int = 5) -> list[dict]:
         resp = requests.get(
             f"{BASE}/questions/",
@@ -28,7 +28,10 @@ class MetaculusClient:
                 "type": "forecast",
             },
             timeout=20,
-            headers={"Accept": "application/json"},
+            headers={
+                "Accept": "application/json",
+                "User-Agent": "prediction-bot/1.0",
+            },
         )
         resp.raise_for_status()
         return resp.json().get("results", [])
@@ -38,10 +41,9 @@ class MetaculusClient:
         Searches Metaculus for the closest question and returns the community
         median probability, or None if no good match found.
         """
-        # Use shortened keywords for better search results
         keywords = _extract_keywords(market_title)
         try:
-            results = self.search_questions(keywords, limit=5)
+            results = self.search_questions(keywords, limit=3)
             if not results:
                 return None
             # Use the first result (highest votes / most relevant)

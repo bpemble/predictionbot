@@ -17,7 +17,7 @@ from utils.logging import get_logger
 
 log = get_logger(__name__)
 
-SIGNAL_SOURCES = ["llm", "news", "research", "metaculus", "gdelt"]
+SIGNAL_SOURCES = ["llm", "resolution", "cross_market", "research", "news", "metaculus", "gdelt"]
 
 
 def calibrate() -> dict[str, float]:

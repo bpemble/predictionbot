@@ -29,10 +29,15 @@ def with_retry(
                     if attempt > max_retries:
                         log.error(f"{fn.__name__} failed after {max_retries} retries: {exc}")
                         raise
-                    # Rate limit: wait longer
+                    # Rate limit (429): don't retry — fail fast so signals degrade
+                    # gracefully rather than stalling the pipeline for 60s.
                     if hasattr(exc, "response") and exc.response is not None:
                         if exc.response.status_code == 429:
-                            delay = 60.0
+                            log.warning(f"{fn.__name__} rate-limited (429) — skipping retries")
+                            raise
+                        if exc.response.status_code in (401, 403, 422):
+                            log.debug(f"{fn.__name__} non-retryable {exc.response.status_code} — skipping retries")
+                            raise
                     log.warning(f"{fn.__name__} attempt {attempt} failed ({exc}), retrying in {delay:.1f}s")
                     time.sleep(delay)
                     delay = min(delay * 2, backoff_max)
