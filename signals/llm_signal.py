@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from clients.claude_llm import ClaudeLLMClient
 from clients.exa import ExaClient
-from clients.newsapi import NewsAPIClient
+from clients.tavily import TavilyClient
 from clients.polymarket import PolymarketClient
 from signals.base import SignalResult
 from utils.logging import get_logger
@@ -15,7 +15,7 @@ from utils.normalizer import MarketSchema
 log = get_logger(__name__)
 
 _llm = ClaudeLLMClient()
-_news = NewsAPIClient()
+_tavily = TavilyClient()
 _exa = ExaClient()
 _poly = PolymarketClient()
 
@@ -32,15 +32,17 @@ def run(market: MarketSchema, deep: bool = False) -> SignalResult:
         except Exception:
             pass
 
-    if _news.available():
-        articles = _news.search(market.title, days_back=5, max_articles=4)
-        if articles:
-            context_parts.append("**Recent News:**\n" + _news.format_for_context(articles))
+    # 1b. Tavily: AI-synthesized search with source snippets (primary news source)
+    if _tavily.available():
+        tavily_results = _tavily.search(market.title, num_results=5)
+        if tavily_results:
+            context_parts.append("**Web Search & News:**\n" + _tavily.format_for_context(tavily_results))
 
+    # 1c. Exa: semantic search as supplementary source
     if _exa.available():
-        exa_results = _exa.search(market.title, num_results=4, days_back=7)
+        exa_results = _exa.search(market.title, num_results=3, days_back=7)
         if exa_results:
-            context_parts.append("**Web Search:**\n" + _exa.format_for_context(exa_results))
+            context_parts.append("**Additional Sources:**\n" + _exa.format_for_context(exa_results))
 
     context = "\n\n".join(context_parts) if context_parts else ""
 

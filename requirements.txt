@@ -17,7 +17,7 @@ eth-account>=0.11.0
 cryptography>=42.0.0
 
 # News & research
-newsapi-python>=0.2.7
+tavily-python>=0.3.0
 exa-py>=1.0.0
 
 # Data

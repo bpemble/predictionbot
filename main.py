@@ -6,6 +6,7 @@ Usage:
   python main.py                    # Start the bot (uses PAPER_TRADE from .env)
   python main.py --derive-poly-creds  # One-time: derive Polymarket API creds from wallet
   python main.py --run-once          # Run one scan cycle and exit (useful for testing)
+  python main.py --report            # Print top 5 open position analytics and exit
 """
 from __future__ import annotations
 
@@ -30,6 +31,8 @@ def main():
                         help="Derive Polymarket API credentials from private key and exit")
     parser.add_argument("--run-once", action="store_true",
                         help="Run one scan cycle and exit (for testing)")
+    parser.add_argument("--report", action="store_true",
+                        help="Print top 5 open position analytics and exit")
     args = parser.parse_args()
 
     settings = get_settings()
@@ -42,6 +45,13 @@ def main():
     log.info(f"Polymarket: {'enabled' if settings.polymarket_enabled() else 'disabled (no key)'}")
     log.info(f"Kalshi:     {'enabled' if settings.kalshi_enabled() else 'disabled (no key)'}")
     log.info("=" * 60)
+
+    # ── Report mode ───────────────────────────────────────────────────────────
+    if args.report:
+        init_db(settings.db_path)
+        from utils.reporter import print_position_report
+        print_position_report(top_n=5)
+        return
 
     # ── One-time setup ────────────────────────────────────────────────────────
     if args.derive_poly_creds:

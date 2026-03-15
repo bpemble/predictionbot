@@ -6,14 +6,12 @@ Uses a simple valence keyword approach; crude but fast and cheap.
 from __future__ import annotations
 
 from clients.exa import ExaClient
-from clients.newsapi import NewsAPIClient
 from signals.base import SignalResult
 from utils.logging import get_logger
 from utils.normalizer import MarketSchema
 
 log = get_logger(__name__)
 
-_news = NewsAPIClient()
 _exa = ExaClient()
 
 # Simple positive/negative keyword lists for prediction-market-relevant language
@@ -41,8 +39,6 @@ def run(market: MarketSchema) -> SignalResult:
     texts = []
     article_count = 0
 
-    # NewsAPI calls are reserved for the LLM signal (which has richer context).
-    # This signal uses Exa only to avoid double-counting the daily API quota.
     if _exa.available():
         exa_results = _exa.search(market.title, num_results=4, days_back=5)
         for r in exa_results:

@@ -50,9 +50,8 @@ class Settings(BaseSettings):
     llm_model_deep: str = "claude-opus-4-6"      # used for deep research on high-value trades
 
     # ── News & Research ───────────────────────────────────────────────────────
-    newsapi_key: Optional[str] = None
+    tavily_api_key: Optional[str] = None
     exa_api_key: Optional[str] = None
-    perplexity_api_key: Optional[str] = None
 
     # ── Capital ───────────────────────────────────────────────────────────────
     bankroll_poly_usd: float = 5000.0
