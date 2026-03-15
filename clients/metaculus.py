@@ -1,6 +1,7 @@
 """
-Metaculus API client — free, no auth required.
-Used to cross-reference prediction market questions against Metaculus forecasts.
+Metaculus API client.
+Requires a free API token: https://www.metaculus.com/accounts/profile/
+Set METACULUS_API_KEY in .env.
 """
 from __future__ import annotations
 
@@ -8,33 +9,49 @@ from typing import Optional
 
 import requests
 
+from config.settings import get_settings
 from utils.logging import get_logger
-from utils.retry import with_retry
 
 log = get_logger(__name__)
 BASE = "https://www.metaculus.com/api2"
 
 
 class MetaculusClient:
-    @with_retry(max_retries=1, backoff_max=5.0)
+    def _headers(self) -> dict:
+        key = get_settings().metaculus_api_key
+        h = {"Accept": "application/json", "User-Agent": "prediction-bot/1.0"}
+        if key:
+            h["Authorization"] = f"Token {key}"
+        return h
+
     def search_questions(self, query: str, limit: int = 5) -> list[dict]:
-        resp = requests.get(
-            f"{BASE}/questions/",
-            params={
-                "search": query,
-                "limit": limit,
-                "order_by": "-votes",
-                "status": "open",
-                "type": "forecast",
-            },
-            timeout=20,
-            headers={
-                "Accept": "application/json",
-                "User-Agent": "prediction-bot/1.0",
-            },
-        )
-        resp.raise_for_status()
-        return resp.json().get("results", [])
+        try:
+            resp = requests.get(
+                f"{BASE}/questions/",
+                params={
+                    "search": query,
+                    "limit": limit,
+                    "order_by": "-votes",
+                    "status": "open",
+                    "type": "forecast",
+                },
+                timeout=10,
+                headers=self._headers(),
+            )
+            resp.raise_for_status()
+            return resp.json().get("results", [])
+        except requests.HTTPError as exc:
+            status = exc.response.status_code if exc.response is not None else 0
+            if status in (401, 403):
+                log.debug("Metaculus auth failed — check METACULUS_API_KEY in .env")
+            elif status == 429:
+                log.debug("Metaculus rate-limited — skipping")
+            else:
+                log.debug(f"Metaculus HTTP {status}: {exc}")
+            return []
+        except Exception as exc:
+            log.debug(f"Metaculus request failed: {exc}")
+            return []
 
     def get_best_match_probability(self, market_title: str) -> Optional[float]:
         """
